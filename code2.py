@@ -2,39 +2,6 @@ import board
 import busio
 import digitalio
 import time
-import rp2pio
-import adafruit_pioasm
-import microcontroller
-
-# NeoPixels are 800khz bit streams. We are choosing zeros as <312ns hi, 936 lo>
-# and ones as <700 ns hi, 556 ns lo>.
-# The first two instructions always run while only one of the two final
-# instructions run per bit. We start with the low period because it can be
-# longer while waiting for more data.
-program = """
-.program ws2812
-.side_set 1
-.wrap_target
-bitloop:
-   out x 1        side 0 [6]; Drive low. Side-set still takes place before instruction stalls.
-   jmp !x do_zero side 1 [3]; Branch on the bit we shifted out previous delay. Drive high.
- do_one:
-   jmp  bitloop   side 1 [4]; Continue driving high, for a one (long pulse)
- do_zero:
-   nop            side 0 [4]; Or drive low, for a zero (short pulse)
-.wrap
-"""
-
-assembled = adafruit_pioasm.assemble(program)
-
-sm = rp2pio.StateMachine(
-    assembled,
-    frequency=12_800_000,  # to get appropriate sub-bit times in PIO program
-    first_sideset_pin=microcontroller.pin.GPIO23,
-    auto_pull=True,
-    out_shift_right=False,
-    pull_threshold=8,
-)
 
 # --- Константы регистров nRF24L01 ---
 REG_CONFIG       = 0x00
@@ -174,7 +141,6 @@ nrf1 = NRF24L01(spi1, csn_pin=board.GP6, ce_pin=board.GP5)
 ADDR = b'\xE7\xE7\xE7\xE7\xE7'
 
 def setup_tx():
-    sm.write(b"\x00\x01\x01")
     print("--- Setup TX (Device 0) ---")
     nrf0.reg_write(REG_RF_CH, 76)
     nrf0.reg_write(REG_RF_SETUP, 0x06)
@@ -191,7 +157,6 @@ def setup_tx():
     print("TX Ready")
 
 def setup_rx():
-    sm.write(b"\x01\x01\x00")
     print("--- Setup RX (Device 1) ---")
     nrf1.reg_write(REG_RF_CH, 76)
     nrf1.reg_write(REG_RF_SETUP, 0x06)
@@ -220,6 +185,7 @@ while True:
     ack_msg = bytes([0xF0, counter % 256])
     nrf1.write_payload(ack_msg, ack_payload=True, pipe=1)
     nrf1.clear_interrupts()
+    nrf1.flush_rx()
     
     # 2. TX отправляет пакет
     tx_msg = bytes([0xA0, counter % 256])
@@ -231,7 +197,6 @@ while True:
     nrf0.ce.value = True
     time.sleep(0.00001)
     nrf0.ce.value = False
-    sm.write(b"\x01\x00\x00")
     
     # 3. Ждем результат на TX
     start = time.monotonic()
@@ -253,17 +218,13 @@ while True:
             blink(1, 0.05) # Быстрая вспышка
             rx_data = nrf0.read_payload(2)
             print(f"TX Success! Sent: {list(tx_msg)} | Got Ack: {list(rx_data)}")
-            sm.write(b"\x00\x00\x01")
         else:
             print("TX Success (Empty ACK)")
-            sm.write(b"\x01\x01\x00")
-        nrf1.flush_rx()
     else:
         # Ошибка
         blink(5, 0.05) # Частое мигание
         print("TX Failed (Max RT)")
         nrf0.flush_tx()
-        sm.write(b"\x00\x05\x00")
         
     counter += 1
-    time.sleep(0.1)
+    # time.sleep(0.1)
