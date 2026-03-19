@@ -57,6 +57,7 @@ CMD_W_TX_PAYLOAD  = 0xA0
 CMD_R_RX_PAYLOAD  = 0x61
 CMD_FLUSH_TX      = 0xE1
 CMD_FLUSH_RX      = 0xE2
+CMD_REUSE_TX_PL   = 0xE3 # Used for a PTX device. Reuse last transmitted payload
 CMD_W_ACK_PAYLOAD = 0xA8
 
 MASK_RX_DR       = (1 << 6)
@@ -140,6 +141,11 @@ class NRF24L01:
         self.spi.write(bytes([CMD_FLUSH_RX]))
         self.csn.value = True
 
+    def reuse_tx_pl(self):
+        self.csn.value = False
+        self.spi.write(bytes([CMD_REUSE_TX_PL]))
+        self.csn.value = True
+
     def power_up_rx(self):
         self.reg_write(REG_CONFIG, self.reg_read(REG_CONFIG) | MASK_PWR_UP | MASK_PRIM_RX)
         self.ce.value = True
@@ -203,6 +209,7 @@ def setup_rx():
     nrf1.flush_tx()
     nrf1.flush_rx()
     nrf1.clear_interrupts()
+    nrf1.reuse_tx_pl()
     nrf1.power_up_rx()
     print("RX Ready")
 
@@ -216,15 +223,16 @@ counter = 0
 print("Starting loop...")
 
 while True:
-    # 1. RX загружает ответ
-    ack_msg = bytes([0xF0, counter % 256])
-    nrf1.write_payload(ack_msg, ack_payload=True, pipe=1)
-    nrf1.clear_interrupts()
+    if counter % 5 == 0:
+        # 1. RX загружает ответ
+        ack_msg = bytes([0xF0, counter % 256])
+        nrf1.write_payload(ack_msg, ack_payload=True, pipe=1)
+        nrf1.clear_interrupts()
     
     # 2. TX отправляет пакет
     tx_msg = bytes([0xA0, counter % 256])
     nrf0.clear_interrupts()
-    nrf0.flush_tx()
+    # nrf0.flush_tx()
     nrf0.write_payload(tx_msg)
     
     # Пульс CE
@@ -250,7 +258,7 @@ while True:
     if success:
         if status & MASK_RX_DR:
             # Успех + получен ответ
-            blink(1, 0.05) # Быстрая вспышка
+            # blink(1, 0.05) # Быстрая вспышка
             rx_data = nrf0.read_payload(2)
             print(f"TX Success! Sent: {list(tx_msg)} | Got Ack: {list(rx_data)}")
             sm.write(b"\x00\x00\x01")
@@ -258,6 +266,8 @@ while True:
             print("TX Success (Empty ACK)")
             sm.write(b"\x01\x01\x00")
         nrf1.flush_rx()
+        time.sleep(0.01)
+        sm.write(b"\x00\x00\x00")
     else:
         # Ошибка
         blink(5, 0.05) # Частое мигание
@@ -266,4 +276,4 @@ while True:
         sm.write(b"\x00\x05\x00")
         
     counter += 1
-    time.sleep(0.1)
+    time.sleep(0.5)
