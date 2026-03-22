@@ -205,6 +205,13 @@ class NRF24L01:
     def clear_interrupts(self):
         self.reg_write(REG_STATUS, 1<<RX_DR | 1<<TX_DS | 1<<MAX_RT | 1<<TX_FULL)
 
+    def deinit(self):
+        self.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 0<<ERX_P0)
+        self.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 0<<ENAA_P0) 
+        self.reg_write(REG_SETUP_RETR, 0x00)
+        self.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 0<<DPL_P0)
+        self.reg_write(REG_FEATURE, 0<<EN_DPL | 0<<EN_ACK_PAY | 0<<EN_DYN_ACK)
+
 # Устройство 0 (TX) - SPI0
 spi0 = busio.SPI(clock=board.GP10, MOSI=board.GP11, MISO=board.GP12)
 while not spi0.try_lock():
@@ -220,6 +227,7 @@ spi1.configure(baudrate=4000000, phase=0, polarity=0)
 nrf1 = NRF24L01(spi1, csn_pin=board.GP6, ce_pin=board.GP5)
 
 def setup_tx():
+    nrf0.deinit()
     sm.write(b"\x00\x01\x01")
     print("--- Setup TX (Device 0) ---")
     # nrf0.reg_write(REG_STATUS, 1<<RX_DR | 1<<TX_DS | 1<<MAX_RT) # 0x70
@@ -240,6 +248,7 @@ def setup_tx():
     print("TX Ready")
 
 def setup_rx():
+    nrf1.deinit()
     sm.write(b"\x01\x01\x00")
     print("--- Setup RX (Device 1) ---")
     # nrf1.reg_write(REG_STATUS, 1<<RX_DR | 1<<TX_DS | 1<<MAX_RT) # 0x70
