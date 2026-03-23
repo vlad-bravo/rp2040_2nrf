@@ -15,23 +15,18 @@ from nrf_defs import (
 
     CMD_R_REGISTER, CMD_W_REGISTER, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD,
     CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD, CMD_NOP,
-
     # CONFIG bits
     MASK_RX_DR, MASK_TX_DS, MASK_MAX_RT, EN_CRC, CRCO, PWR_UP, PRIM_RX,
-
     # RF_SETUP bits
     CONT_WAVE, RF_DR_LOW, PLL_LOCK, RF_DR_HIGH, RF_PWR2, RF_PWR1,
-
     # STATUS bits
     RX_DR, TX_DS, MAX_RT, RX_P_NO3, RX_P_NO2, RX_P_NO1, TX_FULL,
 
     ENAA_P5, ENAA_P4, ENAA_P3, ENAA_P2, ENAA_P1, ENAA_P0,
     ERX_P5, ERX_P4, ERX_P3, ERX_P2, ERX_P1, ERX_P0,
     DPL_P5, DPL_P4, DPL_P3, DPL_P2, DPL_P1, DPL_P0,
-
     # FEATURE bits
     EN_DPL, EN_ACK_PAY, EN_DYN_ACK,
-
     # FIFO_STATUS bits
     TX_REUSE, TX_FULL, TX_EMPTY, RX_FULL, RX_EMPTY
 )
@@ -188,6 +183,7 @@ class NRF24L01:
         self.flush_tx()
         self.flush_rx()
         self.clear_interrupts()
+        self.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 0<<EN_CRC | 0<<CRCO | 0<<PWR_UP | 0<<PRIM_RX)
 
 # Устройство 0 (TX) - SPI0
 spi0 = busio.SPI(clock=board.GP10, MOSI=board.GP11, MISO=board.GP12)
@@ -267,14 +263,14 @@ while True:
     # print(f"RX STATUS: {status:02X}")
     if status & (1 << RX_DR):
         # nrf1.write_payload(b'\x21\x35', ack_payload=True, pipe=1)
-        # payload_length = nrf1.reg_read(REG_RX_PW_P1) # dyn payload
-        # print(f"RX payload length: {payload_length}")
+        #payload_length = nrf1.reg_read(REG_RX_PW_P1) # dyn payload
+        #print(f"RX payload length: {payload_length}")
         rx_data = nrf1.read_payload(2)
         print(f"RX STATUS: {status_bits(status)}  Got: {rx_data[0]:02X}, {rx_data[1]:02X}")
         sm.write(b"\x00\x00\x03")
-        nrf1.clear_interrupts()
-        nrf1.flush_rx()
-        nrf1.flush_tx()
+        #nrf1.clear_interrupts()
+        #nrf1.flush_rx()
+        #nrf1.flush_tx()
 
     time.sleep(0.1)
 
@@ -284,14 +280,14 @@ while True:
     status = nrf0.read_status()
     # print(f"TX STATUS: {status_bits(status)}")
     if status & (1 << RX_DR):
-        nrf0.clear_interrupts()
+        # nrf0.clear_interrupts()
         rx_data = nrf0.read_payload(2)
         print(f"TX STATUS: {status_bits(status)}  Got: {rx_data[0]:02X}, {rx_data[1]:02X}")
-        sm.write(b"\x00\x00\x03")
+        sm.write(b"\x03\x00\x00")
         time.sleep(0.01)
-    nrf0.clear_interrupts()
-    nrf0.flush_rx()
-    nrf0.flush_tx()
+    #nrf0.clear_interrupts()
+    #nrf0.flush_rx()
+    #nrf0.flush_tx()
     # status = nrf0.read_status()
     # print(f"T4 STATUS: {status_bits(status)}")
 

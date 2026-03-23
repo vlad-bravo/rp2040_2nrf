@@ -11,26 +11,24 @@ from nrf_defs import (
     REG_RF_CH, REG_RF_SETUP, REG_STATUS, REG_RX_ADDR_P0, REG_RX_ADDR_P1,
     REG_RX_ADDR_P2, REG_RX_ADDR_P3, REG_RX_ADDR_P4, REG_TX_ADDR,
     REG_RX_PW_P0, REG_RX_PW_P1, REG_RX_PW_P2, REG_RX_PW_P3, REG_RX_PW_P4,
-    REG_RX_PW_P5, REG_DYNPD, REG_FEATURE,
+    REG_RX_PW_P5, REG_FIFO_STATUS, REG_DYNPD, REG_FEATURE,
 
     CMD_R_REGISTER, CMD_W_REGISTER, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD,
-    CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD,
-
+    CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD, CMD_NOP,
     # CONFIG bits
     MASK_RX_DR, MASK_TX_DS, MASK_MAX_RT, EN_CRC, CRCO, PWR_UP, PRIM_RX,
-
     # RF_SETUP bits
     CONT_WAVE, RF_DR_LOW, PLL_LOCK, RF_DR_HIGH, RF_PWR2, RF_PWR1,
-
     # STATUS bits
     RX_DR, TX_DS, MAX_RT, RX_P_NO3, RX_P_NO2, RX_P_NO1, TX_FULL,
 
     ENAA_P5, ENAA_P4, ENAA_P3, ENAA_P2, ENAA_P1, ENAA_P0,
     ERX_P5, ERX_P4, ERX_P3, ERX_P2, ERX_P1, ERX_P0,
     DPL_P5, DPL_P4, DPL_P3, DPL_P2, DPL_P1, DPL_P0,
-
     # FEATURE bits
-    EN_DPL, EN_ACK_PAY, EN_DYN_ACK
+    EN_DPL, EN_ACK_PAY, EN_DYN_ACK,
+    # FIFO_STATUS bits
+    TX_REUSE, TX_FULL, TX_EMPTY, RX_FULL, RX_EMPTY
 )
 
 # NeoPixels are 800khz bit streams. We are choosing zeros as <312ns hi, 936 lo>
@@ -142,6 +140,13 @@ class NRF24L01:
         self.csn.value = False
         self.spi.write(bytes([CMD_REUSE_TX_PL]))
         self.csn.value = True
+
+    def read_status(self):
+        self.csn.value = False
+        result = bytearray(1)
+        self.spi.readinto(result, write_value=CMD_NOP)
+        self.csn.value = True
+        return result[0]
 
     def power_up_rx(self):
         self.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 1<<PRIM_RX)
