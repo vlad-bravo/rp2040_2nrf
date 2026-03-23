@@ -6,6 +6,33 @@ import rp2pio
 import adafruit_pioasm
 import microcontroller
 
+from nrf_defs import (
+    REG_CONFIG, REG_EN_AA, REG_EN_RXADDR, REG_SETUP_AW, REG_SETUP_RETR,
+    REG_RF_CH, REG_RF_SETUP, REG_STATUS, REG_RX_ADDR_P0, REG_RX_ADDR_P1,
+    REG_RX_ADDR_P2, REG_RX_ADDR_P3, REG_RX_ADDR_P4, REG_TX_ADDR,
+    REG_RX_PW_P0, REG_RX_PW_P1, REG_RX_PW_P2, REG_RX_PW_P3, REG_RX_PW_P4,
+    REG_RX_PW_P5, REG_DYNPD, REG_FEATURE,
+
+    CMD_R_REGISTER, CMD_W_REGISTER, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD,
+    CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD,
+
+    # CONFIG bits
+    MASK_RX_DR, MASK_TX_DS, MASK_MAX_RT, EN_CRC, CRCO, PWR_UP, PRIM_RX,
+
+    # RF_SETUP bits
+    CONT_WAVE, RF_DR_LOW, PLL_LOCK, RF_DR_HIGH, RF_PWR2, RF_PWR1,
+
+    # STATUS bits
+    RX_DR, TX_DS, MAX_RT, RX_P_NO3, RX_P_NO2, RX_P_NO1, TX_FULL,
+
+    ENAA_P5, ENAA_P4, ENAA_P3, ENAA_P2, ENAA_P1, ENAA_P0,
+    ERX_P5, ERX_P4, ERX_P3, ERX_P2, ERX_P1, ERX_P0,
+    DPL_P5, DPL_P4, DPL_P3, DPL_P2, DPL_P1, DPL_P0,
+
+    # FEATURE bits
+    EN_DPL, EN_ACK_PAY, EN_DYN_ACK
+)
+
 # NeoPixels are 800khz bit streams. We are choosing zeros as <312ns hi, 936 lo>
 # and ones as <700 ns hi, 556 ns lo>.
 # The first two instructions always run while only one of the two final
@@ -35,36 +62,6 @@ sm = rp2pio.StateMachine(
     out_shift_right=False,
     pull_threshold=8,
 )
-
-# --- Константы регистров nRF24L01 ---
-REG_CONFIG       = 0x00
-REG_EN_AA        = 0x01
-REG_EN_RXADDR    = 0x02
-REG_SETUP_AW     = 0x03
-REG_SETUP_RETR   = 0x04
-REG_RF_CH        = 0x05
-REG_RF_SETUP     = 0x06
-REG_STATUS       = 0x07
-REG_RX_ADDR_P0   = 0x0A
-REG_RX_ADDR_P1   = 0x0B
-REG_TX_ADDR      = 0x10
-REG_DYNPD        = 0x1C
-REG_FEATURE      = 0x1D
-
-CMD_R_REGISTER    = 0x00
-CMD_W_REGISTER    = 0x20
-CMD_W_TX_PAYLOAD  = 0xA0
-CMD_R_RX_PAYLOAD  = 0x61
-CMD_FLUSH_TX      = 0xE1
-CMD_FLUSH_RX      = 0xE2
-CMD_REUSE_TX_PL   = 0xE3 # Used for a PTX device. Reuse last transmitted payload
-CMD_W_ACK_PAYLOAD = 0xA8
-
-MASK_RX_DR       = (1 << 6)
-MASK_TX_DS       = (1 << 5)
-MASK_MAX_RT      = (1 << 4)
-MASK_PWR_UP      = (1 << 1)
-MASK_PRIM_RX     = (1 << 0)
 
 # --- Настройка встроенного светодиода ---
 # Если вашей платы нет в списке, можно заменить board.LED на конкретный пин, например board.GP25
@@ -147,15 +144,23 @@ class NRF24L01:
         self.csn.value = True
 
     def power_up_rx(self):
-        self.reg_write(REG_CONFIG, self.reg_read(REG_CONFIG) | MASK_PWR_UP | MASK_PRIM_RX)
+        self.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 1<<PRIM_RX)
         self.ce.value = True
         time.sleep(0.001)
 
     def power_up_tx(self):
-        self.reg_write(REG_CONFIG, (self.reg_read(REG_CONFIG) | MASK_PWR_UP) & ~MASK_PRIM_RX)
+        self.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 0<<PRIM_RX)
 
     def clear_interrupts(self):
-        self.reg_write(REG_STATUS, MASK_RX_DR | MASK_TX_DS | MASK_MAX_RT)
+        self.reg_write(REG_STATUS, 1<<RX_DR | 1<<TX_DS | 1<<MAX_RT | 1<<TX_FULL)
+
+    def deinit(self):
+        self.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 0<<ERX_P0)
+        self.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 0<<ENAA_P0) 
+        self.reg_write(REG_SETUP_RETR, 0x00)
+        self.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 0<<DPL_P0)
+        self.reg_write(REG_FEATURE, 0<<EN_DPL | 0<<EN_ACK_PAY | 0<<EN_DYN_ACK)
+        self.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 0<<EN_CRC | 0<<CRCO | 0<<PWR_UP | 0<<PRIM_RX)
 
 # --- Инициализация устройств ---
 
@@ -180,6 +185,7 @@ nrf1 = NRF24L01(spi1, csn_pin=board.GP6, ce_pin=board.GP5)
 ADDR = b'\xE7\xE7\xE7\xE7\xE7'
 
 def setup_tx():
+    nrf0.deinit()
     sm.write(b"\x00\x01\x01")
     print("--- Setup TX (Device 0) ---")
     nrf0.reg_write(REG_RF_CH, 76)
@@ -197,6 +203,7 @@ def setup_tx():
     print("TX Ready")
 
 def setup_rx():
+    nrf1.deinit()
     sm.write(b"\x01\x01\x00")
     print("--- Setup RX (Device 1) ---")
     nrf1.reg_write(REG_RF_CH, 76)
@@ -248,15 +255,15 @@ while True:
     
     while time.monotonic() - start < 0.1:
         status = nrf0.reg_read(REG_STATUS)
-        if status & MASK_TX_DS:
+        if status & (1<<TX_DS):
             success = True
             break
-        if status & MASK_MAX_RT:
+        if status & (1<<MAX_RT):
             break
         time.sleep(0.001)
             
     if success:
-        if status & MASK_RX_DR:
+        if status & (1<<RX_DR):
             # Успех + получен ответ
             # blink(1, 0.05) # Быстрая вспышка
             rx_data = nrf0.read_payload(2)

@@ -20,17 +20,30 @@ REG_RX_PW_P2     = 0x13 # RX payload width, pipe2
 REG_RX_PW_P3     = 0x14 # RX payload width, pipe3
 REG_RX_PW_P4     = 0x15 # RX payload width, pipe4
 REG_RX_PW_P5     = 0x16 # RX payload width, pipe5
+REG_FIFO_STATUS  = 0x17
 REG_DYNPD        = 0x1C
 REG_FEATURE      = 0x1D
 
 CMD_R_REGISTER    = 0x00
 CMD_W_REGISTER    = 0x20
-CMD_W_TX_PAYLOAD  = 0xA0
+CMD_R_RX_PL_WID   = 0x60 # Read RX payload width for the top R_RX_PAYLOAD in the RX FIFO. NOTE: Flush RX FIFO if the read value is larger than 32 bytes
 CMD_R_RX_PAYLOAD  = 0x61
+CMD_W_TX_PAYLOAD  = 0xA0
+CMD_W_ACK_PAYLOAD = 0xA8
+CMD_W_TX_PAYLOAD_NO_ACK = 0xB0 # Used in TX mode. Disables AUTOACK on this specific packet
 CMD_FLUSH_TX      = 0xE1
 CMD_FLUSH_RX      = 0xE2
 CMD_REUSE_TX_PL   = 0xE3 # Used for a PTX device. Reuse last transmitted payload
-CMD_W_ACK_PAYLOAD = 0xA8
+CMD_NOP           = 0xFF
+
+# STATUS bits
+RX_DR    = 6 # Data Ready RX FIFO interrupt. Asserted when new data arrives RX FIFO. Write 1 to clear bit
+TX_DS    = 5 # Data Sent TX FIFO interrupt. Asserted when packet transmitted on TX. If AUTO_ACK is activated, this bit is set high only when ACK is received. Write 1 to clear bit
+MAX_RT   = 4 # Maximum number of TX retransmits interrupt Write 1 to clear bit. If MAX_RT is asserted it must be cleared to enable further communication 
+RX_P_NO3 = 3 # Data pipe number for the payload available for reading from RX_FIFO
+RX_P_NO2 = 2 # 000-101: Data Pipe Number
+RX_P_NO1 = 1 # 111: RX FIFO Empty
+TX_FULL  = 0 # TX FIFO full flag. 1: TX FIFO full. 0: Available locations in TX FIFO.
 
 # CONFIG bits
 MASK_RX_DR  = 6 # Mask interrupt caused by RX_DR 1: Interrupt not reflected on the IRQ pin 0: Reflect RX_DR as active low interrupt on the IRQ pin
@@ -49,14 +62,17 @@ RF_DR_HIGH = 3 # Air Data Rate [RF_DR_LOW, RF_DR_HIGH]: ‘00’ – 1Mbps// ‘
 RF_PWR2    = 2 # Set RF output power in TX mode
 RF_PWR1    = 1 # '00' – -18dBm '01' – -12dBm '10' – -6dBm '11' – 0dBm
 
-# STATUS bits
-RX_DR    = 6 # Data Ready RX FIFO interrupt. Asserted when new data arrives RX FIFO. Write 1 to clear bit
-TX_DS    = 5 # Data Sent TX FIFO interrupt. Asserted when packet transmitted on TX. If AUTO_ACK is activated, this bit is set high only when ACK is received. Write 1 to clear bit
-MAX_RT   = 4 # Maximum number of TX retransmits interrupt Write 1 to clear bit. If MAX_RT is asserted it must be cleared to enable further communication 
-RX_P_NO3 = 3 # Data pipe number for the payload available for reading from RX_FIFO
-RX_P_NO2 = 2 # 000-101: Data Pipe Number
-RX_P_NO1 = 1 # 111: RX FIFO Empty
-TX_FULL  = 0 # TX FIFO full flag. 1: TX FIFO full. 0: Available locations in TX FIFO.
+# FEATURE bits
+EN_DPL     = 2 # Enables Dynamic Payload Length
+EN_ACK_PAY = 1 # Enables Payload with ACK
+EN_DYN_ACK = 0 # Enables the W_TX_PAYLOAD_NOACK command
+
+# FIFO_STATUS bits
+TX_REUSE = 6
+TX_FULL  = 5
+TX_EMPTY = 4
+RX_FULL  = 1
+RX_EMPTY = 0
 
 ENAA_P5 = 5 # Enable auto acknowledgement data pipe 5
 ENAA_P4 = 4 # Enable auto acknowledgement data pipe 4
@@ -78,8 +94,3 @@ DPL_P3 = 3 # Enable dyn. payload length data pipe 3. (Requires EN_DPL and ENAA_P
 DPL_P2 = 2 # Enable dyn. payload length data pipe 2. (Requires EN_DPL and ENAA_P2)
 DPL_P1 = 1 # Enable dyn. payload length data pipe 1. (Requires EN_DPL and ENAA_P1)
 DPL_P0 = 0 # Enable dyn. payload length data pipe 0. (Requires EN_DPL and ENAA_P0)
-
-# FEATURE bits
-EN_DPL     = 2 # Enables Dynamic Payload Length
-EN_ACK_PAY = 1 # Enables Payload with ACK
-EN_DYN_ACK = 0 # Enables the W_TX_PAYLOAD_NOACK command

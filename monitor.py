@@ -11,10 +11,10 @@ from nrf_defs import (
     REG_RF_CH, REG_RF_SETUP, REG_STATUS, REG_RX_ADDR_P0, REG_RX_ADDR_P1,
     REG_RX_ADDR_P2, REG_RX_ADDR_P3, REG_RX_ADDR_P4, REG_TX_ADDR,
     REG_RX_PW_P0, REG_RX_PW_P1, REG_RX_PW_P2, REG_RX_PW_P3, REG_RX_PW_P4,
-    REG_RX_PW_P5, REG_DYNPD, REG_FEATURE,
+    REG_RX_PW_P5, REG_FIFO_STATUS, REG_DYNPD, REG_FEATURE,
 
     CMD_R_REGISTER, CMD_W_REGISTER, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD,
-    CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD,
+    CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD, CMD_NOP,
 
     # CONFIG bits
     MASK_RX_DR, MASK_TX_DS, MASK_MAX_RT, EN_CRC, CRCO, PWR_UP, PRIM_RX,
@@ -30,7 +30,10 @@ from nrf_defs import (
     DPL_P5, DPL_P4, DPL_P3, DPL_P2, DPL_P1, DPL_P0,
 
     # FEATURE bits
-    EN_DPL, EN_ACK_PAY, EN_DYN_ACK
+    EN_DPL, EN_ACK_PAY, EN_DYN_ACK,
+
+    # FIFO_STATUS bits
+    TX_REUSE, TX_FULL, TX_EMPTY, RX_FULL, RX_EMPTY
 )
 
 # NeoPixels are 800khz bit streams. We are choosing zeros as <312ns hi, 936 lo>
@@ -72,6 +75,28 @@ def blink(times=1, delay=0.1):
         time.sleep(delay)
         led.value = False
         time.sleep(delay)
+
+def status_bits(status):
+    pipe = (status & (1<<RX_P_NO3 | 1<<RX_P_NO2 | 1<<RX_P_NO1)) // 2
+    pipe_text = "RX FIFO Empty" if pipe == 7 else f"pipe={pipe}"
+    return (
+        f"{status:02X}: "
+        f"RX_DR={1 if status & (1<<RX_DR) else 0} "
+        f"TX_DS={1 if status & (1<<TX_DS) else 0} "
+        f"MAX_RT={1 if status & (1<<MAX_RT) else 0} "
+        f"{pipe_text} "
+        f"TX_FULL={1 if status & (1<<TX_FULL) else 0}"
+    )
+
+def fifo_status_bits(fifo_status):
+    return (
+        f"{fifo_status:02X}: "
+        f"TX_REUSE={1 if fifo_status & (1<<TX_REUSE) else 0} "
+        f"TX_FULL={1 if fifo_status & (1<<TX_FULL) else 0} "
+        f"TX_EMPTY={1 if fifo_status & (1<<TX_EMPTY) else 0} "
+        f"RX_FULL={1 if fifo_status & (1<<RX_FULL) else 0} "
+        f"RX_EMPTY={1 if fifo_status & (1<<RX_EMPTY) else 0}"
+    )
 
 class NRF24L01:
     def __init__(self, spi, csn_pin, ce_pin):
@@ -136,6 +161,13 @@ class NRF24L01:
         self.spi.write(bytes([CMD_REUSE_TX_PL]))
         self.csn.value = True
 
+    def read_status(self):
+        self.csn.value = False
+        result = bytearray(1)
+        self.spi.readinto(result, write_value=CMD_NOP)
+        self.csn.value = True
+        return result[0]
+
     def power_up_rx(self):
         self.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 1<<PRIM_RX)
         self.ce.value = True
@@ -153,6 +185,9 @@ class NRF24L01:
         self.reg_write(REG_SETUP_RETR, 0x00)
         self.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 0<<DPL_P0)
         self.reg_write(REG_FEATURE, 0<<EN_DPL | 0<<EN_ACK_PAY | 0<<EN_DYN_ACK)
+        self.flush_tx()
+        self.flush_rx()
+        self.clear_interrupts()
 
 # Устройство 0 (TX) - SPI0
 spi0 = busio.SPI(clock=board.GP10, MOSI=board.GP11, MISO=board.GP12)
@@ -172,17 +207,14 @@ def setup_tx():
     nrf0.deinit()
     sm.write(b"\x00\x01\x01")
     print("--- Setup TX (Device 0) ---")
-    # nrf0.reg_write(REG_STATUS, 1<<RX_DR | 1<<TX_DS | 1<<MAX_RT) # 0x70
+    nrf0.reg_write(REG_RF_CH, 0x4C)
+    nrf0.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 0<<RF_DR_LOW | 0<<PLL_LOCK | 0<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
     nrf0.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 1<<ENAA_P0) 
     nrf0.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 1<<ERX_P0)
-    nrf0.reg_write(REG_SETUP_AW, 3) # address width = 5 bytes
-    nrf0.reg_write(REG_SETUP_RETR, 0x0F)
-    nrf0.reg_write(REG_RF_CH, 0x4C)
-    nrf0.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 1<<RF_DR_LOW | 0<<PLL_LOCK | 0<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
-    nrf0.write_addr(REG_TX_ADDR, b'\xC3\xE7\xEC\xE7\xC5')
-    nrf0.write_addr(REG_RX_ADDR_P0, b'\xC3\xE7\xEC\xE7\xC5')
     nrf0.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 1<<DPL_P0)
     nrf0.reg_write(REG_FEATURE, 1<<EN_DPL | 1<<EN_ACK_PAY | 0<<EN_DYN_ACK) # 0x06
+    nrf0.write_addr(REG_TX_ADDR, b'\xC3\xE7\xEC\xE7\xC5')
+    nrf0.write_addr(REG_RX_ADDR_P0, b'\xC3\xE7\xEC\xE7\xC5')
     nrf0.flush_tx()
     nrf0.flush_rx()
     nrf0.clear_interrupts()
@@ -193,65 +225,75 @@ def setup_rx():
     nrf1.deinit()
     sm.write(b"\x01\x01\x00")
     print("--- Setup RX (Device 1) ---")
-    # nrf1.reg_write(REG_STATUS, 1<<RX_DR | 1<<TX_DS | 1<<MAX_RT) # 0x70
+    nrf1.reg_write(REG_RF_CH, 0x4C)
+    nrf1.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 0<<RF_DR_LOW | 0<<PLL_LOCK | 0<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
     nrf1.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 1<<ENAA_P1 | 0<<ENAA_P0) 
     nrf1.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 1<<ERX_P1 | 0<<ERX_P0)
-    nrf1.reg_write(REG_SETUP_AW, 3) # address width = 5 bytes
-    nrf1.reg_write(REG_SETUP_RETR, 0x0F)
-    nrf1.reg_write(REG_RF_CH, 0x4C)
-    nrf1.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 1<<RF_DR_LOW | 0<<PLL_LOCK | 0<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
-    nrf1.write_addr(REG_TX_ADDR, b'\xC3\xE7\xEC\xE7\xC5')
-    nrf1.write_addr(REG_RX_ADDR_P1, b'\xC3\xE7\xEC\xE7\xC5')
-    nrf1.reg_write(REG_RX_PW_P1, 0) # dyn payload
     nrf1.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 1<<DPL_P1 | 0<<DPL_P0)
     nrf1.reg_write(REG_FEATURE, 1<<EN_DPL | 1<<EN_ACK_PAY | 0<<EN_DYN_ACK) # 0x06
+    nrf1.write_addr(REG_RX_ADDR_P1, b'\xC3\xE7\xEC\xE7\xC5')
     nrf1.flush_tx()
     nrf1.flush_rx()
     nrf1.clear_interrupts()
-    nrf1.reuse_tx_pl()
+    # nrf1.reuse_tx_pl()
     nrf1.power_up_rx()
-    nrf1.write_payload(b'\x21\x35', ack_payload=True, pipe=1)
+    nrf1.write_payload(b'\x22\x36', ack_payload=True, pipe=1)
+    nrf1.reuse_tx_pl()
     print("RX Ready")
 
 setup_rx() 
 setup_tx() 
 
 while True:
+    # fifo_status = nrf1.reg_read(REG_FIFO_STATUS)
+    # print(f"FIFO TX status: {fifo_status_bits(fifo_status)}")
     # 1. TX send packet
-    nrf0.clear_interrupts()
-    nrf0.flush_tx()
+    # nrf0.clear_interrupts()
+    # nrf0.flush_tx()
     # nrf0.flush_rx()
     nrf0.write_payload(b'\x23\x38')
     nrf0.ce.value = True
     time.sleep(0.00001)
     nrf0.ce.value = False
-    print(".", end="")
+    # print(".", end="")
+    # nrf0.clear_interrupts()
 
     time.sleep(0.1)
 
+    # fifo_status = nrf1.reg_read(REG_FIFO_STATUS)
+    # print(f"FIFO RX status: {fifo_status_bits(fifo_status)}")
     # 2. RX receive packet
-    status = nrf1.reg_read(REG_STATUS)
+    status = nrf1.read_status()
     # print(f"RX STATUS: {status:02X}")
     if status & (1 << RX_DR):
         # nrf1.write_payload(b'\x21\x35', ack_payload=True, pipe=1)
+        # payload_length = nrf1.reg_read(REG_RX_PW_P1) # dyn payload
+        # print(f"RX payload length: {payload_length}")
         rx_data = nrf1.read_payload(2)
-        print(f"RX STATUS: {status:02X}  Got: {rx_data[0]:02X}, {rx_data[1]:02X}")
+        print(f"RX STATUS: {status_bits(status)}  Got: {rx_data[0]:02X}, {rx_data[1]:02X}")
         sm.write(b"\x00\x00\x03")
         nrf1.clear_interrupts()
         nrf1.flush_rx()
-        nrf1.flush_rx()
+        nrf1.flush_tx()
 
     time.sleep(0.1)
 
+    # fifo_status = nrf1.reg_read(REG_FIFO_STATUS)
+    # print(f"FIFO TX status: {fifo_status_bits(fifo_status)}")
     # 3. TX receive ASC payload
-    status = nrf0.reg_read(REG_STATUS)
-    # print(f"TX STATUS: {status:02X}")
+    status = nrf0.read_status()
+    # print(f"TX STATUS: {status_bits(status)}")
     if status & (1 << RX_DR):
         nrf0.clear_interrupts()
         rx_data = nrf0.read_payload(2)
-        print(f"TX STATUS: {status:02X}  Got: {rx_data[0]:02X}, {rx_data[1]:02X}")
+        print(f"TX STATUS: {status_bits(status)}  Got: {rx_data[0]:02X}, {rx_data[1]:02X}")
         sm.write(b"\x00\x00\x03")
         time.sleep(0.01)
+    nrf0.clear_interrupts()
+    nrf0.flush_rx()
+    nrf0.flush_tx()
+    # status = nrf0.read_status()
+    # print(f"T4 STATUS: {status_bits(status)}")
 
     sm.write(b"\x00\x00\x00")
-    time.sleep(0.5)
+    time.sleep(0.9)
