@@ -41,6 +41,18 @@ def blink(times=1, delay=0.1):
         led.value = False
         time.sleep(delay)
 
+def status_bits(status):
+    pipe = (status & (1<<RX_P_NO3 | 1<<RX_P_NO2 | 1<<RX_P_NO1)) // 2
+    pipe_text = "RX FIFO Empty" if pipe == 7 else f"pipe={pipe}"
+    return (
+        f"{status:02X}: "
+        f"RX_DR={1 if status & (1<<RX_DR) else 0} "
+        f"TX_DS={1 if status & (1<<TX_DS) else 0} "
+        f"MAX_RT={1 if status & (1<<MAX_RT) else 0} "
+        f"{pipe_text} "
+        f"TX_FULL={1 if status & (1<<TX_FULL) else 0}"
+    )
+
 # --- Инициализация устройств ---
 
 # Устройство 0 (TX) - SPI0
@@ -61,46 +73,34 @@ spi1.configure(baudrate=4000000, phase=0, polarity=0)
 # CS - GP5 (CE), CSN - GP6
 nrf1 = NRF24L01(spi1, csn_pin=board.GP6, ce_pin=board.GP5)
 
-ADDR = b'\xE7\xE7\xE7\xE7\xE7'
-
 def setup_tx():
     nrf0.deinit()
     sm.write(b"\x00\x01\x01")
     print("--- Setup TX (Device 0) ---")
     nrf0.reg_write(REG_RF_CH, 11)
     nrf0.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 1<<RF_DR_LOW | 0<<PLL_LOCK | 0<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
-    nrf0.reg_write(REG_EN_AA, 1<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 0<<ENAA_P0) 
+    nrf0.reg_write(REG_EN_AA, 1<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 0<<ENAA_P0)
     nrf0.reg_write(REG_EN_RXADDR, 1<<ERX_P5 | 1<<ERX_P4 | 1<<ERX_P3 | 1<<ERX_P2 | 1<<ERX_P1 | 1<<ERX_P0)
-    # nrf0.reg_write(REG_DYNPD, 0x01)
-    # nrf0.reg_write(REG_FEATURE, 0x06) 
-    nrf0.write_addr(REG_TX_ADDR, ADDR)
-    nrf0.write_addr(REG_RX_ADDR_P0, ADDR)
+    nrf0.write_addr(REG_TX_ADDR, b'\xE7\xE7\xE7\xE7\xE7')
+    nrf0.write_addr(REG_RX_ADDR_P0, b'\xE7\xE7\xE7\xE7\xE7')
     nrf0.flush_tx()
     nrf0.flush_rx()
     nrf0.clear_interrupts()
     #nrf0.power_up_tx()
-    nrf0.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 0<<PRIM_RX)
+    #nrf0.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 0<<PRIM_RX)
     print("TX Ready")
 
 def setup_rx():
     nrf1.deinit()
     sm.write(b"\x01\x01\x00")
     print("--- Setup RX (Device 1) ---")
-    nrf1.reg_write(REG_RF_CH, 110)
-    nrf1.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 1<<RF_DR_LOW | 0<<PLL_LOCK | 0<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
-    nrf1.reg_write(REG_EN_AA, 1<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 0<<ENAA_P0) 
-    nrf1.reg_write(REG_EN_RXADDR, 1<<ERX_P5 | 1<<ERX_P4 | 1<<ERX_P3 | 1<<ERX_P2 | 1<<ERX_P1 | 1<<ERX_P0)
-    nrf1.reg_write(REG_SETUP_AW, 3) # address width = 5 bytes
-    nrf1.reg_write(REG_RX_PW_P0, 4) # 4 byte payload
-    nrf1.write_addr(REG_RX_ADDR_P0, b'\xE7\xC2\xC2\xC2\xE7')
-    nrf1.reg_write(REG_RX_PW_P1, 4) # 4 byte payload
-    nrf1.write_addr(REG_RX_ADDR_P1, b'\xC2\xE7\xE7\xE7\xC2')
-    nrf1.reg_write(REG_RX_PW_P2, 4) # 4 byte payload
-    nrf1.write_addr(REG_RX_ADDR_P2, b'\x2C')
-    nrf1.reg_write(REG_RX_PW_P3, 4) # 4 byte payload
-    nrf1.write_addr(REG_RX_ADDR_P3, b'\x7C')
-    nrf1.reg_write(REG_RX_PW_P4, 4) # 4 byte payload
-    nrf1.write_addr(REG_RX_ADDR_P4, b'\x5C')
+    nrf1.reg_write(REG_RF_CH, 120)
+    nrf1.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 0<<RF_DR_LOW | 0<<PLL_LOCK | 1<<RF_DR_HIGH | 0<<RF_PWR2 | 0<<RF_PWR1)
+    nrf1.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 1<<ERX_P0)
+    #nrf1.reg_write(REG_RX_PW_P0, 4) # 4 bytes payload
+    nrf1.write_addr(REG_RX_ADDR_P0, b'\xC3\xE7\xEC\xE7\xC5')
+    nrf1.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 1<<DPL_P0)
+    nrf1.reg_write(REG_FEATURE, 1<<EN_DPL | 1<<EN_ACK_PAY | 0<<EN_DYN_ACK)
     nrf1.flush_tx()
     nrf1.flush_rx()
     nrf1.clear_interrupts()
@@ -108,6 +108,8 @@ def setup_rx():
     nrf1.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 0<<CRCO | 1<<PWR_UP | 1<<PRIM_RX)
     nrf1.ce.value = True
     time.sleep(0.001)
+    nrf1.write_payload(b'\x22\x36', ack_payload=True, pipe=0)
+    nrf1.reuse_tx_pl()
     print("RX Ready")
 
 # --- Основной цикл ---
@@ -122,7 +124,7 @@ while True:
     if status & (1 << RX_DR):
         nrf1.clear_interrupts()
         rx_data = nrf1.read_payload(4)
-        print(f"STATUS: {status:02X}  Got: {list(rx_data)}")
+        print(f"STATUS: {status_bits(status)}  Got: {list(rx_data)}")
         sm.write(b"\x00\x00\x03")
         time.sleep(0.01)
         sm.write(b"\x00\x00\x00")
