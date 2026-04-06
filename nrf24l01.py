@@ -8,7 +8,7 @@ from nrf_defs import (
     REG_RX_PW_P0, REG_RX_PW_P1, REG_RX_PW_P2, REG_RX_PW_P3, REG_RX_PW_P4,
     REG_RX_PW_P5, REG_FIFO_STATUS, REG_DYNPD, REG_FEATURE,
 
-    CMD_R_REGISTER, CMD_W_REGISTER, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD,
+    CMD_R_REGISTER, CMD_W_REGISTER, CMD_ACTIVATE, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD,
     CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD, CMD_NOP,
     # CONFIG bits
     MASK_RX_DR, MASK_TX_DS, MASK_MAX_RT, EN_CRC, CRCO, PWR_UP, PRIM_RX,
@@ -23,7 +23,7 @@ from nrf_defs import (
     # FEATURE bits
     EN_DPL, EN_ACK_PAY, EN_DYN_ACK,
     # FIFO_STATUS bits
-    TX_REUSE, TX_FULL, TX_EMPTY, RX_FULL, RX_EMPTY
+    TX_REUSE, TX_FUL2, TX_EMPTY, RX_FULL, RX_EMPTY
 )
 
 class NRF24L01:
@@ -89,6 +89,11 @@ class NRF24L01:
         self.spi.write(bytes([CMD_REUSE_TX_PL]))
         self.csn.value = True
 
+    def activate(self):
+        self.csn.value = False
+        self.spi.write(bytes([CMD_ACTIVATE, 0x73]))
+        self.csn.value = True
+
     def read_status(self):
         self.csn.value = False
         result = bytearray(1)
@@ -108,8 +113,9 @@ class NRF24L01:
         self.reg_write(REG_STATUS, 1<<RX_DR | 1<<TX_DS | 1<<MAX_RT | 1<<TX_FULL)
 
     def deinit(self):
+        self.ce.value = False
         self.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 0<<ERX_P0)
-        self.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 0<<ENAA_P0) 
+        self.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 0<<ENAA_P0)
         self.reg_write(REG_SETUP_RETR, 0x00)
         self.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 0<<DPL_P0)
         self.reg_write(REG_FEATURE, 0<<EN_DPL | 0<<EN_ACK_PAY | 0<<EN_DYN_ACK)

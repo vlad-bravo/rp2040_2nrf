@@ -27,7 +27,7 @@ from nrf_defs import (
     # FEATURE bits
     EN_DPL, EN_ACK_PAY, EN_DYN_ACK,
     # FIFO_STATUS bits
-    TX_REUSE, TX_FULL, TX_EMPTY, RX_FULL, RX_EMPTY
+    TX_REUSE, TX_FUL2, TX_EMPTY, RX_FULL, RX_EMPTY
 )
 
 sm = neopixel_sm()
@@ -57,7 +57,7 @@ def fifo_status_bits(fifo_status):
     return (
         f"{fifo_status:02X}: "
         f"TX_REUSE={1 if fifo_status & (1<<TX_REUSE) else 0} "
-        f"TX_FULL={1 if fifo_status & (1<<TX_FULL) else 0} "
+        f"TX_FULL={1 if fifo_status & (1<<TX_FUL2) else 0} "
         f"TX_EMPTY={1 if fifo_status & (1<<TX_EMPTY) else 0} "
         f"RX_FULL={1 if fifo_status & (1<<RX_FULL) else 0} "
         f"RX_EMPTY={1 if fifo_status & (1<<RX_EMPTY) else 0}"
@@ -83,7 +83,7 @@ def setup_tx():
     print("--- Setup TX (Device 0) ---")
     nrf0.reg_write(REG_RF_CH, 0x4C)
     nrf0.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 0<<RF_DR_LOW | 0<<PLL_LOCK | 0<<RF_DR_HIGH | 0<<RF_PWR2 | 0<<RF_PWR1)
-    nrf0.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 1<<ENAA_P0) 
+    nrf0.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 1<<ENAA_P0)
     nrf0.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 1<<ERX_P0)
     nrf0.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 1<<DPL_P0)
     nrf0.reg_write(REG_FEATURE, 1<<EN_DPL | 1<<EN_ACK_PAY | 0<<EN_DYN_ACK)

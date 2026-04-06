@@ -26,6 +26,14 @@ REG_FEATURE      = 0x1D
 
 CMD_R_REGISTER    = 0x00
 CMD_W_REGISTER    = 0x20
+CMD_ACTIVATE      = 0x50 # This write command followed by data 0x73 activates the following features:
+# • R_RX_PL_WID
+# • W_ACK_PAYLOAD
+# • W_TX_PAYLOAD_NOACK
+# A new ACTIVATE command with the same data deactivates them again. This is executable in power down or stand by modes only.
+# The R_RX_PL_WID, W_ACK_PAYLOAD, and W_TX_PAYLOAD_NOACK features registers are initially in a deactivated state// a write has no
+# effect, a read only results in zeros on MISO. To activate these registers, use the ACTIVATE command followed by data 0x73. Then they can be
+# accessed as any other register in nRF24L01. Use the same command and data to deactivate the registers again.
 CMD_R_RX_PL_WID   = 0x60 # Read RX payload width for the top R_RX_PAYLOAD in the RX FIFO. NOTE: Flush RX FIFO if the read value is larger than 32 bytes
 CMD_R_RX_PAYLOAD  = 0x61
 CMD_W_TX_PAYLOAD  = 0xA0
@@ -69,7 +77,7 @@ EN_DYN_ACK = 0 # Enables the W_TX_PAYLOAD_NOACK command
 
 # FIFO_STATUS bits
 TX_REUSE = 6
-TX_FULL  = 5
+TX_FUL2  = 5
 TX_EMPTY = 4
 RX_FULL  = 1
 RX_EMPTY = 0

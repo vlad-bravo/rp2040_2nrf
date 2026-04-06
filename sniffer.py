@@ -27,7 +27,7 @@ from nrf_defs import (
     # FEATURE bits
     EN_DPL, EN_ACK_PAY, EN_DYN_ACK,
     # FIFO_STATUS bits
-    TX_REUSE, TX_FULL, TX_EMPTY, RX_FULL, RX_EMPTY
+    TX_REUSE, TX_FUL2, TX_EMPTY, RX_FULL, RX_EMPTY
 )
 
 sm = neopixel_sm()

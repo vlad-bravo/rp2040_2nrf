@@ -1,3 +1,8 @@
+# Воспроизведение настроек ov7670 и mnitor
+# Отдельные командные настройки не используются
+# Настроен AutoAck и Ack+payload
+# Но основная передача выполняется через CMD_W_TX_PAYLOAD_NO_ACK
+
 import board
 import busio
 import digitalio
@@ -12,8 +17,8 @@ from nrf_defs import (
     REG_RX_PW_P0, REG_RX_PW_P1, REG_RX_PW_P2, REG_RX_PW_P3, REG_RX_PW_P4,
     REG_RX_PW_P5, REG_FIFO_STATUS, REG_DYNPD, REG_FEATURE,
 
-    CMD_R_REGISTER, CMD_W_REGISTER, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD,
-    CMD_FLUSH_TX, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD, CMD_NOP,
+    CMD_R_REGISTER, CMD_W_REGISTER, CMD_W_TX_PAYLOAD, CMD_R_RX_PAYLOAD, CMD_FLUSH_TX,
+    CMD_W_TX_PAYLOAD_NO_ACK, CMD_FLUSH_RX, CMD_REUSE_TX_PL, CMD_W_ACK_PAYLOAD, CMD_NOP,
     # CONFIG bits
     MASK_RX_DR, MASK_TX_DS, MASK_MAX_RT, EN_CRC, CRCO, PWR_UP, PRIM_RX,
     # RF_SETUP bits
@@ -67,40 +72,47 @@ def setup_tx():
     nrf0.deinit()
     sm.write(b"\x00\x01\x01")
     print("--- Setup TX (Device 0) ---")
-    nrf0.reg_write(REG_RF_CH, 76)
-    nrf0.reg_write(REG_RF_SETUP, 0x06)
-    nrf0.reg_write(REG_EN_AA, 0x01) 
-    nrf0.reg_write(REG_EN_RXADDR, 0x01)
-    nrf0.reg_write(REG_DYNPD, 0x01)
-    nrf0.reg_write(REG_FEATURE, 0x06) 
+    nrf0.reg_write(REG_SETUP_RETR, 0x01)
+    nrf0.reg_write(REG_SETUP_AW, 3)
+    nrf0.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 0<<RF_DR_LOW | 0<<PLL_LOCK | 1<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
+    nrf0.reg_write(REG_RF_CH, 120)
     nrf0.write_addr(REG_TX_ADDR, ADDR)
     nrf0.write_addr(REG_RX_ADDR_P0, ADDR)
-    nrf0.flush_tx()
-    nrf0.flush_rx()
-    nrf0.clear_interrupts()
+    nrf0.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 1<<ENAA_P0)
+    nrf0.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 1<<ERX_P0)
+    nrf0.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 1<<DPL_P0)
+    nrf0.reg_write(REG_FEATURE, 1<<EN_DPL | 1<<EN_ACK_PAY | 1<<EN_DYN_ACK)
+    nrf0.activate()
+    #nrf0.flush_tx()
+    #nrf0.flush_rx()
+    #nrf0.clear_interrupts()
     # nrf0.power_up_tx()
-    nrf0.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 0<<PRIM_RX)
+    nrf0.reg_write(REG_CONFIG, 1<<MASK_RX_DR | 1<<MASK_TX_DS | 1<<MASK_MAX_RT | 1<<EN_CRC | 0<<CRCO | 1<<PWR_UP | 0<<PRIM_RX)
     print("TX Ready")
 
 def setup_rx():
     nrf1.deinit()
     sm.write(b"\x01\x01\x00")
     print("--- Setup RX (Device 1) ---")
-    nrf1.reg_write(REG_RF_CH, 76)
-    nrf1.reg_write(REG_RF_SETUP, 0x06)
-    nrf1.reg_write(REG_EN_AA, 0x02)
-    nrf1.reg_write(REG_EN_RXADDR, 0x02)
-    nrf1.reg_write(REG_DYNPD, 0x02)
-    nrf1.reg_write(REG_FEATURE, 0x06)
-    nrf1.write_addr(REG_RX_ADDR_P1, ADDR)
-    nrf1.flush_tx()
-    nrf1.flush_rx()
-    nrf1.clear_interrupts()
-    nrf1.reuse_tx_pl()
+    nrf1.reg_write(REG_EN_AA, 0<<ENAA_P5 | 0<<ENAA_P4 | 0<<ENAA_P3 | 0<<ENAA_P2 | 0<<ENAA_P1 | 1<<ENAA_P0)
+    nrf1.reg_write(REG_RF_SETUP, 0<<CONT_WAVE | 0<<RF_DR_LOW | 0<<PLL_LOCK | 1<<RF_DR_HIGH | 1<<RF_PWR2 | 1<<RF_PWR1)
+    nrf1.reg_write(REG_RF_CH, 120)
+    nrf1.reg_write(REG_EN_RXADDR, 0<<ERX_P5 | 0<<ERX_P4 | 0<<ERX_P3 | 0<<ERX_P2 | 0<<ERX_P1 | 1<<ERX_P0)
+    nrf1.reg_write(REG_RX_PW_P0, 32)
+    nrf1.write_addr(REG_RX_ADDR_P0, ADDR)
+    nrf1.reg_write(REG_SETUP_RETR, 0x00)
+    nrf1.activate()
+    nrf1.reg_write(REG_FEATURE, 1<<EN_DPL | 1<<EN_ACK_PAY | 1<<EN_DYN_ACK)
+    nrf1.reg_write(REG_DYNPD, 0<<DPL_P5 | 0<<DPL_P4 | 0<<DPL_P3 | 0<<DPL_P2 | 0<<DPL_P1 | 1<<DPL_P0)
+    #nrf1.flush_tx()
+    #nrf1.flush_rx()
+    #nrf1.clear_interrupts()
     # nrf1.power_up_rx()
-    nrf1.reg_write(REG_CONFIG, 0<<MASK_RX_DR | 0<<MASK_TX_DS | 0<<MASK_MAX_RT | 1<<EN_CRC | 1<<CRCO | 1<<PWR_UP | 1<<PRIM_RX)
+    nrf1.reg_write(REG_CONFIG, 1<<MASK_RX_DR | 1<<MASK_TX_DS | 1<<MASK_MAX_RT | 1<<EN_CRC | 0<<CRCO | 1<<PWR_UP | 1<<PRIM_RX)
     nrf1.ce.value = True
     time.sleep(0.001)
+    nrf1.write_payload(b'\x22\x36', ack_payload=True, pipe=0)
+    nrf1.reuse_tx_pl()
     print("RX Ready")
 
 # --- Основной цикл ---
@@ -113,15 +125,16 @@ counter = 0
 print("Starting loop...")
 
 while True:
+    nrf1.flush_rx()
     if counter % 5 == 0:
         # 1. RX загружает ответ
         ack_msg = bytes([0xF0, counter % 256])
-        nrf1.write_payload(ack_msg, ack_payload=True, pipe=1)
-        nrf1.clear_interrupts()
+        nrf1.write_payload(ack_msg, ack_payload=True, pipe=0)
+        #nrf1.clear_interrupts()
     
     # 2. TX отправляет пакет
     tx_msg = bytes([0xA0, counter % 256])
-    nrf0.clear_interrupts()
+    #nrf0.clear_interrupts()
     # nrf0.flush_tx()
     nrf0.write_payload(tx_msg)
     
@@ -155,14 +168,14 @@ while True:
         else:
             print("TX Success (Empty ACK)")
             sm.write(b"\x01\x01\x00")
-        nrf1.flush_rx()
+        #nrf1.flush_rx()
         time.sleep(0.01)
         sm.write(b"\x00\x00\x00")
     else:
         # Ошибка
         blink(5, 0.05) # Частое мигание
         print("TX Failed (Max RT)")
-        nrf0.flush_tx()
+        #nrf0.flush_tx()
         sm.write(b"\x00\x05\x00")
         
     counter += 1
