@@ -1,14 +1,11 @@
-import board
-import busio
-import digitalio
+from machine import Pin, I2C, PWM
 import time
-import microcontroller
 
 # === Конфигурация пинов ===
 PINS = {
-    'D0': board.GP0, 'D1': board.GP1, 'D2': board.GP16, 'D3': board.GP17,
-    'D4': board.GP18, 'D5': board.GP19, 'D6': board.GP20, 'D7': board.GP21,
-    'PCLK': board.GP27, 'VSYNC': board.GP23, 'HREF': board.GP28, 'MCLK': board.GP26
+    'D0': 0, 'D1': 1, 'D2': 16, 'D3': 17,
+    'D4': 18, 'D5': 19, 'D6': 20, 'D7': 21,
+    'PCLK': 27, 'VSYNC': 23, 'HREF': 28, 'MCLK': 26
 }
 
 # === Регистры OV7670 ===
@@ -59,31 +56,19 @@ def init_pins():
     """Инициализация всех GPIO пинов"""
     # Пины данных (вход)
     for i in range(8):
-        pin = PINS[f'D{i}']
-        pin_dio = digitalio.DigitalInOut(pin)
-        pin_dio.direction = digitalio.Direction.INPUT
-        PINS[f'D{i}_dio'] = pin_dio
+        pin_num = PINS[f'D{i}']
+        PINS[f'D{i}_dio'] = Pin(pin_num, Pin.IN)
     
     # Управляющие пины
-    PINS['PCLK_dio'] = digitalio.DigitalInOut(PINS['PCLK'])
-    PINS['PCLK_dio'].direction = digitalio.Direction.INPUT
-    
-    PINS['VSYNC_dio'] = digitalio.DigitalInOut(PINS['VSYNC'])
-    PINS['VSYNC_dio'].direction = digitalio.Direction.INPUT
-    
-    PINS['HREF_dio'] = digitalio.DigitalInOut(PINS['HREF'])
-    PINS['HREF_dio'].direction = digitalio.Direction.INPUT
-    
-    # Выходные пины
-    #PINS['RESET_dio'] = digitalio.DigitalInOut(PINS['RESET'])
-    #PINS['RESET_dio'].direction = digitalio.Direction.OUTPUT
-    
-    #PINS['PWDN_dio'] = digitalio.DigitalInOut(PINS['PWDN'])
-    #PINS['PWDN_dio'].direction = digitalio.Direction.OUTPUT
+    PINS['PCLK_dio'] = Pin(PINS['PCLK'], Pin.IN)
+    PINS['VSYNC_dio'] = Pin(PINS['VSYNC'], Pin.IN)
+    PINS['HREF_dio'] = Pin(PINS['HREF'], Pin.IN)
     
     # MCLK - используем PWM для генерации тактовой частоты
-    from pwmio import PWMOut
-    PINS['MCLK_pwm'] = PWMOut(PINS['MCLK'], frequency=8_000_000, duty_cycle=0x1000)
+    # duty 32768 = 50% (из диапазона 0-65535)
+    PINS['MCLK_pwm'] = PWM(PINS['MCLK'])
+    PINS['MCLK_pwm'].freq(60_000_000)
+    PINS['MCLK_pwm'].duty_u16(32768)
 
 # === I2C коммуникация ===
 def write_reg(i2c, reg, value):
@@ -92,21 +77,12 @@ def write_reg(i2c, reg, value):
 
 def read_reg(i2c, reg):
     """Чтение регистра OV7670"""
-    buf = bytearray(1)
-    buf[0] = reg
-    i2c.writeto_then_readfrom(0x21, buf, buf)
-    #result = i2c.readfrom(0x21, buf)
-    return buf[0]
+    data = i2c.readfrom_mem(0x21, reg, 1)
+    return data[0]
 
 # === Настройка режимов камеры ===
 def reset_camera(i2c):
     """Сброс камеры в известное состояние"""
-    # Аппаратный сброс
-    #PINS['RESET_dio'].value = False
-    #time.sleep(0.01)
-    #PINS['RESET_dio'].value = True
-    #time.sleep(0.1)
-    
     # Программный сброс через регистр COM7
     write_reg(i2c, REG_COM7, 0x80)
     time.sleep(0.1)
@@ -117,32 +93,26 @@ def init_ov7670(i2c):
     # Сброс камеры
     reset_camera(i2c)
     
-    # Включение камеры (выход из power down)
-    #PINS['PWDN_dio'].value = False
-    #time.sleep(0.001)
-    
     # Настройка тактового делителя (CLKRC)
-    # 0x01 = делитель на 2, 0x00 = без деления
-    # Для 8MHz MCLK от RP2040, ставим делитель 1
-    write_reg(i2c, REG_CLKRC, 0x1F)
+    write_reg(i2c, REG_CLKRC, 0x00)
     
     # COM7: RGB | Resolution VGA | без сброса
-    write_reg(i2c, REG_COM7, 0x06)  # 0x06 = VGA, RGB
+    write_reg(i2c, REG_COM7, 0x06)
     
-    # COM3: Включить масштабирование, вертикальный зеркальный (при необходимости)
+    # COM3: Включить масштабирование
     write_reg(i2c, REG_COM3, 0x04)
     
     # COM4: Без масштабирования
     write_reg(i2c, REG_COM4, 0x00)
     
     # COM5: Настройки AGC/AEC
-    write_reg(i2c, REG_COM5, 0x61)  # 0x61 = AGC включен, AEC включен
+    write_reg(i2c, REG_COM5, 0x61)
     
     # COM6: Настройки AGC
     write_reg(i2c, REG_COM6, 0x4B)
     
     # COM8: Включить AGC и AEC
-    write_reg(i2c, REG_COM8, 0xE7)  # 0xE7 = AGC, AEC, AWB, AEC большой диапазон
+    write_reg(i2c, REG_COM8, 0xE7)
     
     # COM9: Gain ceiling
     write_reg(i2c, REG_COM9, 0x4A)
@@ -151,25 +121,25 @@ def init_ov7670(i2c):
     write_reg(i2c, REG_COM10, 0x00)
     
     # COM11: ночной режим, PCLK инвертировать
-    write_reg(i2c, REG_COM11, 0x02)  # 0x02 = инвертировать PCLK
+    write_reg(i2c, REG_COM11, 0x02)
     
     # COM12: HREF polarity
-    write_reg(i2c, REG_COM12, 0x08)  # 0x08 = HREF active high
+    write_reg(i2c, REG_COM12, 0x08)
     
     # COM13: формат данных RGB/YUV
-    write_reg(i2c, REG_COM13, 0x18)  # 0x18 = YUV формат
+    write_reg(i2c, REG_COM13, 0x18)
     
     # COM14: Enable YUV output
     write_reg(i2c, REG_COM14, 0x18)
     
     # COM15: Выходной формат: YUYV
-    write_reg(i2c, REG_COM15, 0xC0)  # 0xC0 = YUYV
+    write_reg(i2c, REG_COM15, 0xC0)
     
     # COM16: Замена U и V
     write_reg(i2c, REG_COM16, 0x00)
     
     # TSLB: Порядок байтов в YUV
-    write_reg(i2c, REG_TSLB, 0x00)  # 0x00 = YUYV порядок
+    write_reg(i2c, REG_TSLB, 0x00)
     
     # Настройка окон (HSTART, HSTOP, VSTART, VSTOP для VGA)
     write_reg(i2c, REG_HSTART, 0x16)
@@ -195,9 +165,9 @@ def init_ov7670(i2c):
     write_reg(i2c, REG_COM8, 0xE7)
     
     print("OV7670 инициализирована в режиме VGA YUV")
-    #pid = read_reg(i2c, REG_PID)
-    #ver = read_reg(i2c, REG_VER)
-    #print(f"ID камеры: 0x{pid:02X}{ver:02X}")
+    pid = read_reg(i2c, REG_PID)
+    ver = read_reg(i2c, REG_VER)
+    print(f"ID камеры: 0x{pid:02X}{ver:02X}")
 
 # === Захват строки ===
 def capture_line(pclk, href, data_pins):
@@ -206,24 +176,24 @@ def capture_line(pclk, href, data_pins):
     pixel_index = 0
     
     # Ждем начала строки (HREF = HIGH)
-    while not href.value:
+    while not href.value():
         pass
     
     # Захватываем 640 пикселей (640 байт Y)
     while pixel_index < 640:
-        # Ждем перепада PCLK (предполагаем что PCLK инвертирован)
-        last_pclk = pclk.value
-        while pclk.value == last_pclk:
+        # Ждем перепада PCLK
+        last_pclk = pclk.value()
+        while pclk.value() == last_pclk:
             pass
         
         # Читаем данные с шины
         data = 0
         for i in range(8):
-            if data_pins[i].value:
+            if data_pins[i].value():
                 data |= (1 << i)
         
         # Берем только первый байт (Y) из каждого 16-битного слова YUYV
-        if pixel_index % 2 == 0:  # Y компонента
+        if pixel_index % 2 == 0:
             line_buffer[pixel_index // 2] = data
         
         pixel_index += 1
@@ -238,7 +208,6 @@ def capture_frame(width, height, process_line_cb):
     buffer1 = bytearray(width)
     buffer2 = bytearray(width)
     
-    # Указатели на активный буфер для заполнения и для обработки
     fill_buffer = buffer1
     process_buffer = buffer2
     
@@ -250,21 +219,19 @@ def capture_frame(width, height, process_line_cb):
     
     row_count = 0
     
-    # Ждем начала кадра (VSYNC)
-    # Ждем VSYNC = HIGH (начало кадра)
-    while not vsync_pin.value:
+    # Ждем начала кадра (VSYNC = HIGH)
+    while not vsync_pin.value():
         pass
     
     # Ждем VSYNC = LOW (начало активной области)
-    while vsync_pin.value:
+    while vsync_pin.value():
         pass
     
     # Захватываем все строки
     while row_count < height:
         # Ждем начала строки
-        while not href_pin.value:
-            # Если VSYNC стал HIGH, значит кадр закончился
-            if vsync_pin.value:
+        while not href_pin.value():
+            if vsync_pin.value():
                 break
         
         # Захватываем строку
@@ -277,7 +244,7 @@ def capture_frame(width, height, process_line_cb):
         fill_buffer, process_buffer = process_buffer, fill_buffer
         
         # Обрабатываем предыдущую строку
-        if row_count > 0:  # Первая строка еще не готова для обработки
+        if row_count > 0:
             process_line_cb(row_count - 1, process_buffer)
         
         row_count += 1
@@ -290,30 +257,22 @@ def capture_frame(width, height, process_line_cb):
 # === Процедуры обработки ===
 def process_line(row_number, line_data):
     """Обработка одной строки"""
-    # Пример: вычисляем среднюю яркость строки
     if line_data:
         avg_brightness = sum(line_data) / len(line_data)
-        if row_number % 50 == 0:  # Выводим каждую 50-ю строку для отладки
+        if row_number % 50 == 0:
             print(f"Строка {row_number:3d}: средняя яркость = {avg_brightness:.1f}")
-        
-        # Здесь можно добавить свою логику обработки строки
-        # Например: отправить по UART, сохранить в файл, распознавание и т.д.
 
 def process_frame():
     """Обработка полного кадра"""
     print("=== Кадр полностью получен и обработан ===")
-    # Здесь можно выполнить анализ всего кадра
 
 # === Основная функция ===
 def main():
-    # Инициализация пинов и тактирования
     print("Инициализация пинов...")
     init_pins()
     
-    # Инициализация I2C
-    i2c = busio.I2C(board.GP15, board.GP14)  # SDA, SCL
-    while not i2c.try_lock():
-        pass
+    # Инициализация I2C (GP1 = SDA, GP0 = SCL)
+    i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=400_000)
     
     # Поиск камеры на I2C шине
     devices = i2c.scan()
@@ -327,8 +286,6 @@ def main():
     # Инициализация камеры
     init_ov7670(i2c)
     
-    i2c.unlock()
-    
     # Параметры изображения
     WIDTH = 640
     HEIGHT = 480
@@ -336,15 +293,12 @@ def main():
     print(f"Начинаем захват изображения {WIDTH}x{HEIGHT}...")
     print("Режим: черно-белый (Y компонента из YUYV)")
     
-    # Счетчик кадров
     frame_count = 0
     
-    # Бесконечный цикл захвата
     while True:
         frame_count += 1
         print(f"\n--- Кадр #{frame_count} ---")
         
-        # Захват кадра с построчной обработкой
         rows_captured = capture_frame(WIDTH, HEIGHT, process_line)
         
         if rows_captured == HEIGHT:
@@ -352,7 +306,6 @@ def main():
         else:
             print(f"Ошибка: получено только {rows_captured} строк из {HEIGHT}")
         
-        # Небольшая задержка между кадрами
         time.sleep(0.1)
 
 # Запуск
