@@ -6,10 +6,9 @@ import microcontroller
 
 # === Конфигурация пинов ===
 PINS = {
-    'D0': board.GP2, 'D1': board.GP3, 'D2': board.GP4, 'D3': board.GP5,
-    'D4': board.GP6, 'D5': board.GP7, 'D6': board.GP8, 'D7': board.GP9,
-    'PCLK': board.GP10, 'VSYNC': board.GP11, 'HREF': board.GP12,
-    'MCLK': board.GP13, 'RESET': board.GP14, 'PWDN': board.GP15
+    'D0': board.GP14, 'D1': board.GP15, 'D2': board.GP16, 'D3': board.GP17,
+    'D4': board.GP18, 'D5': board.GP19, 'D6': board.GP20, 'D7': board.GP21,
+    'PCLK': board.GP27, 'VSYNC': board.GP23, 'HREF': board.GP28, 'MCLK': board.GP26
 }
 
 # === Регистры OV7670 ===
@@ -76,11 +75,11 @@ def init_pins():
     PINS['HREF_dio'].direction = digitalio.Direction.INPUT
     
     # Выходные пины
-    PINS['RESET_dio'] = digitalio.DigitalInOut(PINS['RESET'])
-    PINS['RESET_dio'].direction = digitalio.Direction.OUTPUT
+    #PINS['RESET_dio'] = digitalio.DigitalInOut(PINS['RESET'])
+    #PINS['RESET_dio'].direction = digitalio.Direction.OUTPUT
     
-    PINS['PWDN_dio'] = digitalio.DigitalInOut(PINS['PWDN'])
-    PINS['PWDN_dio'].direction = digitalio.Direction.OUTPUT
+    #PINS['PWDN_dio'] = digitalio.DigitalInOut(PINS['PWDN'])
+    #PINS['PWDN_dio'].direction = digitalio.Direction.OUTPUT
     
     # MCLK - используем PWM для генерации тактовой частоты
     from pwmio import PWMOut
@@ -93,18 +92,20 @@ def write_reg(i2c, reg, value):
 
 def read_reg(i2c, reg):
     """Чтение регистра OV7670"""
-    i2c.writeto(0x21, bytes([reg]))
-    result = i2c.readfrom(0x21, 1)
-    return result[0]
+    buf = bytearray(1)
+    buf[0] = reg
+    i2c.writeto_then_readfrom(0x21, buf, buf)
+    #result = i2c.readfrom(0x21, buf)
+    return buf[0]
 
 # === Настройка режимов камеры ===
 def reset_camera(i2c):
     """Сброс камеры в известное состояние"""
     # Аппаратный сброс
-    PINS['RESET_dio'].value = False
-    time.sleep(0.01)
-    PINS['RESET_dio'].value = True
-    time.sleep(0.1)
+    #PINS['RESET_dio'].value = False
+    #time.sleep(0.01)
+    #PINS['RESET_dio'].value = True
+    #time.sleep(0.1)
     
     # Программный сброс через регистр COM7
     write_reg(i2c, REG_COM7, 0x80)
@@ -117,8 +118,8 @@ def init_ov7670(i2c):
     reset_camera(i2c)
     
     # Включение камеры (выход из power down)
-    PINS['PWDN_dio'].value = False
-    time.sleep(0.001)
+    #PINS['PWDN_dio'].value = False
+    #time.sleep(0.001)
     
     # Настройка тактового делителя (CLKRC)
     # 0x01 = делитель на 2, 0x00 = без деления
@@ -194,7 +195,7 @@ def init_ov7670(i2c):
     write_reg(i2c, REG_COM8, 0xE7)
     
     print("OV7670 инициализирована в режиме VGA YUV")
-    print(f"ID камеры: 0x{read_reg(i2c, REG_PID):02X}{read_reg(i2c, REG_VER):02X}")
+    #print(f"ID камеры: 0x{read_reg(i2c, REG_PID):02X}{read_reg(i2c, REG_VER):02X}")
 
 # === Захват строки ===
 def capture_line(pclk, href, data_pins):
