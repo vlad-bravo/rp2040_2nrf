@@ -11,48 +11,11 @@ PINS = {
     'PCLK': board.GP27, 'VSYNC': board.GP23, 'HREF': board.GP28, 'MCLK': board.GP26
 }
 
-# === Регистры OV7670 ===
-REG_GAIN = 0x00
-REG_BLUE = 0x01
-REG_RED = 0x02
-REG_VREF = 0x03
-REG_COM1 = 0x04
-REG_BAVE = 0x05
-REG_GEAVE = 0x06
-REG_AECHH = 0x07
-REG_RAVE = 0x08
-REG_COM2 = 0x09
-REG_PID = 0x0A
-REG_VER = 0x0B
-REG_COM3 = 0x0C
-REG_COM4 = 0x0D
-REG_COM5 = 0x0E
-REG_COM6 = 0x0F
-REG_AEC = 0x10
-REG_CLKRC = 0x11
-REG_COM7 = 0x12
-REG_COM8 = 0x13
-REG_COM9 = 0x14
-REG_COM10 = 0x15
-REG_HSTART = 0x17
-REG_HSTOP = 0x18
-REG_VSTART = 0x19
-REG_VSTOP = 0x1A
-REG_PSHFT = 0x1B
-REG_MIDH = 0x1C
-REG_MIDL = 0x1D
-REG_MVFP = 0x1E
-REG_AEW = 0x24
-REG_AEB = 0x25
-REG_VV = 0x26
-REG_REG76 = 0x76
-REG_COM11 = 0x3B
-REG_COM12 = 0x3C
-REG_COM13 = 0x3D
-REG_COM14 = 0x3E
-REG_COM15 = 0x3F
-REG_COM16 = 0x40
-REG_TSLB = 0x3A
+from cam_defs import (
+    REG_COM7, REG_CLKRC, REG_COM3, REG_COM4, REG_COM5, REG_COM6, REG_COM8, REG_COM9, REG_COM10, REG_COM11, REG_COM12, REG_COM13, REG_COM14,REG_COM15,REG_COM16,
+    REG_TSLB, REG_HSTART, REG_HSTOP, REG_VSTART, REG_VSTOP, REG_AECHH, REG_AEW, REG_AEB, TSLB_YLAST, COM7_FMT_VGA, REG_HREF, REG_SCALING_XSC, REG_SCALING_YSC,
+    REG_SCALING_DCWCTR, REG_SCALING_PCLK_DIV,
+)
 
 # === Инициализация пинов ===
 def init_pins():
@@ -117,82 +80,16 @@ def init_ov7670(i2c):
     # Сброс камеры
     reset_camera(i2c)
     
-    # Включение камеры (выход из power down)
-    #PINS['PWDN_dio'].value = False
-    #time.sleep(0.001)
-    
-    # Настройка тактового делителя (CLKRC)
-    # 0x01 = делитель на 2, 0x00 = без деления
-    # Для 8MHz MCLK от RP2040, ставим делитель 1
+    write_reg(i2c, REG_TSLB, TSLB_YLAST)
+    write_reg(i2c, REG_COM7, COM7_FMT_VGA)
     write_reg(i2c, REG_CLKRC, 0x1F)
-    
-    # COM7: RGB | Resolution VGA | без сброса
-    write_reg(i2c, REG_COM7, 0x06)  # 0x06 = VGA, RGB
-    
-    # COM3: Включить масштабирование, вертикальный зеркальный (при необходимости)
-    write_reg(i2c, REG_COM3, 0x04)
-    
-    # COM4: Без масштабирования
-    write_reg(i2c, REG_COM4, 0x00)
-    
-    # COM5: Настройки AGC/AEC
-    write_reg(i2c, REG_COM5, 0x61)  # 0x61 = AGC включен, AEC включен
-    
-    # COM6: Настройки AGC
-    write_reg(i2c, REG_COM6, 0x4B)
-    
-    # COM8: Включить AGC и AEC
-    write_reg(i2c, REG_COM8, 0xE7)  # 0xE7 = AGC, AEC, AWB, AEC большой диапазон
-    
-    # COM9: Gain ceiling
-    write_reg(i2c, REG_COM9, 0x4A)
-    
-    # COM10: PCLK output polarity
-    write_reg(i2c, REG_COM10, 0x00)
-    
-    # COM11: ночной режим, PCLK инвертировать
-    write_reg(i2c, REG_COM11, 0x02)  # 0x02 = инвертировать PCLK
-    
-    # COM12: HREF polarity
-    write_reg(i2c, REG_COM12, 0x08)  # 0x08 = HREF active high
-    
-    # COM13: формат данных RGB/YUV
-    write_reg(i2c, REG_COM13, 0x18)  # 0x18 = YUV формат
-    
-    # COM14: Enable YUV output
-    write_reg(i2c, REG_COM14, 0x18)
-    
-    # COM15: Выходной формат: YUYV
-    write_reg(i2c, REG_COM15, 0xC0)  # 0xC0 = YUYV
-    
-    # COM16: Замена U и V
-    write_reg(i2c, REG_COM16, 0x00)
-    
-    # TSLB: Порядок байтов в YUV
-    write_reg(i2c, REG_TSLB, 0x00)  # 0x00 = YUYV порядок
-    
-    # Настройка окон (HSTART, HSTOP, VSTART, VSTOP для VGA)
-    write_reg(i2c, REG_HSTART, 0x16)
-    write_reg(i2c, REG_HSTOP, 0x76)
-    write_reg(i2c, REG_VSTART, 0x02)
-    write_reg(i2c, REG_VSTOP, 0x7A)
-    
-    # AGC/AEC настройки
-    write_reg(i2c, REG_AECHH, 0x00)
-    write_reg(i2c, REG_AEW, 0x64)
-    write_reg(i2c, REG_AEB, 0x64)
-    
-    # Экспозиция
-    write_reg(i2c, REG_VV, 0x00)
-    write_reg(i2c, REG_REG76, 0x01)
-    
-    # Усиление и баланс белого
-    write_reg(i2c, REG_GAIN, 0x00)
-    write_reg(i2c, REG_BLUE, 0x80)
-    write_reg(i2c, REG_RED, 0x80)
-    
-    # Включить автоматические настройки
-    write_reg(i2c, REG_COM8, 0xE7)
+    write_reg(i2c, REG_HSTART, 0x13)
+    write_reg(i2c, REG_HSTOP, 0x01)
+    write_reg(i2c, REG_HREF, 0x36)
+    write_reg(i2c, REG_SCALING_XSC, 0x3a)
+    write_reg(i2c, REG_SCALING_YSC, 0x35)
+    write_reg(i2c, REG_SCALING_DCWCTR, 0x11)
+    write_reg(i2c, REG_SCALING_PCLK_DIV, 0xF0)
     
     print("OV7670 инициализирована в режиме VGA YUV")
     #pid = read_reg(i2c, REG_PID)
@@ -335,7 +232,12 @@ def main():
     
     print(f"Начинаем захват изображения {WIDTH}x{HEIGHT}...")
     print("Режим: черно-белый (Y компонента из YUYV)")
-    
+
+    vsync_pin = PINS['VSYNC_dio']
+    href_pin = PINS['HREF_dio']
+    pclk_pin = PINS['PCLK_dio']
+    data_pins = [PINS[f'D{i}_dio'] for i in range(8)]
+
     # Счетчик кадров
     frame_count = 0
     
@@ -352,6 +254,8 @@ def main():
         else:
             print(f"Ошибка: получено только {rows_captured} строк из {HEIGHT}")
         
+        #if vsync_pin.value:
+        #    print('1', end='')
         # Небольшая задержка между кадрами
         time.sleep(0.1)
 
