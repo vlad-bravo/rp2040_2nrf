@@ -3,6 +3,10 @@ import busio
 import digitalio
 import time
 import microcontroller
+    
+# Параметры изображения
+WIDTH = 640
+HEIGHT = 480
 
 # === Конфигурация пинов ===
 PINS = {
@@ -46,7 +50,7 @@ def init_pins():
     
     # MCLK - используем PWM для генерации тактовой частоты
     from pwmio import PWMOut
-    PINS['MCLK_pwm'] = PWMOut(PINS['MCLK'], frequency=8_000_000, duty_cycle=0x1000)
+    PINS['MCLK_pwm'] = PWMOut(PINS['MCLK'], frequency=3_000_000, duty_cycle=0x8000)
 
 # === I2C коммуникация ===
 def write_reg(i2c, reg, value):
@@ -82,14 +86,19 @@ def init_ov7670(i2c):
     
     write_reg(i2c, REG_TSLB, TSLB_YLAST)
     write_reg(i2c, REG_COM7, COM7_FMT_VGA)
-    write_reg(i2c, REG_CLKRC, 0x1F)
+    write_reg(i2c, REG_CLKRC, 0x3F)
     write_reg(i2c, REG_HSTART, 0x13)
     write_reg(i2c, REG_HSTOP, 0x01)
     write_reg(i2c, REG_HREF, 0x36)
-    write_reg(i2c, REG_SCALING_XSC, 0x3a)
-    write_reg(i2c, REG_SCALING_YSC, 0x35)
+    # (SCALING_XSC[7], SCALING_YSC[7]):
+    # 00: no test output
+    # 01: shifting 1
+    # 10: 8-bar color bar
+    # 11: fade to gray color bar
+    write_reg(i2c, REG_SCALING_XSC, 0xba) # 0x3a
+    write_reg(i2c, REG_SCALING_YSC, 0x35) # 0x35
     write_reg(i2c, REG_SCALING_DCWCTR, 0x11)
-    write_reg(i2c, REG_SCALING_PCLK_DIV, 0xF0)
+    write_reg(i2c, REG_SCALING_PCLK_DIV, 0xf0)
     
     print("OV7670 инициализирована в режиме VGA YUV")
     #pid = read_reg(i2c, REG_PID)
@@ -99,15 +108,15 @@ def init_ov7670(i2c):
 # === Захват строки ===
 def capture_line(pclk, href, data_pins):
     """Захват одной строки 640 байт (только Y компонента)"""
-    line_buffer = bytearray(640)
+    line_buffer = bytearray(1280)
     pixel_index = 0
     
     # Ждем начала строки (HREF = HIGH)
-    while not href.value:
-        pass
+    #while not href.value:
+    #    pass
     
     # Захватываем 640 пикселей (640 байт Y)
-    while pixel_index < 640:
+    while pixel_index < 1280:
         # Ждем перепада PCLK (предполагаем что PCLK инвертирован)
         last_pclk = pclk.value
         while pclk.value == last_pclk:
@@ -119,21 +128,19 @@ def capture_line(pclk, href, data_pins):
             if data_pins[i].value:
                 data |= (1 << i)
         
-        # Берем только первый байт (Y) из каждого 16-битного слова YUYV
-        if pixel_index % 2 == 0:  # Y компонента
-            line_buffer[pixel_index // 2] = data
+        line_buffer[pixel_index] = data
         
         pixel_index += 1
     
     return line_buffer
 
 # === Захват полного кадра ===
-def capture_frame(width, height, process_line_cb):
+def capture_frame():
     """Захват полного кадра с построчной обработкой"""
     
     # Два буфера по 640 байт
-    buffer1 = bytearray(width)
-    buffer2 = bytearray(width)
+    buffer1 = bytearray(WIDTH)
+    buffer2 = bytearray(WIDTH)
     
     # Указатели на активный буфер для заполнения и для обработки
     fill_buffer = buffer1
@@ -157,7 +164,7 @@ def capture_frame(width, height, process_line_cb):
         pass
     
     # Захватываем все строки
-    while row_count < height:
+    while row_count < HEIGHT:
         # Ждем начала строки
         while not href_pin.value:
             # Если VSYNC стал HIGH, значит кадр закончился
@@ -175,12 +182,12 @@ def capture_frame(width, height, process_line_cb):
         
         # Обрабатываем предыдущую строку
         if row_count > 0:  # Первая строка еще не готова для обработки
-            process_line_cb(row_count - 1, process_buffer)
+            process_line(row_count - 1, process_buffer)
         
         row_count += 1
     
     # Обрабатываем последнюю строку
-    process_line_cb(row_count - 1, fill_buffer)
+    process_line(row_count - 1, fill_buffer)
     
     return row_count
 
@@ -189,9 +196,8 @@ def process_line(row_number, line_data):
     """Обработка одной строки"""
     # Пример: вычисляем среднюю яркость строки
     if line_data:
-        avg_brightness = sum(line_data) / len(line_data)
         if row_number % 50 == 0:  # Выводим каждую 50-ю строку для отладки
-            print(f"Строка {row_number:3d}: средняя яркость = {avg_brightness:.1f}")
+            print(f"Строка {row_number:3d} {list(line_data[:15])}")
         
         # Здесь можно добавить свою логику обработки строки
         # Например: отправить по UART, сохранить в файл, распознавание и т.д.
@@ -226,10 +232,6 @@ def main():
     
     i2c.unlock()
     
-    # Параметры изображения
-    WIDTH = 640
-    HEIGHT = 480
-    
     print(f"Начинаем захват изображения {WIDTH}x{HEIGHT}...")
     print("Режим: черно-белый (Y компонента из YUYV)")
 
@@ -247,7 +249,7 @@ def main():
         print(f"\n--- Кадр #{frame_count} ---")
         
         # Захват кадра с построчной обработкой
-        rows_captured = capture_frame(WIDTH, HEIGHT, process_line)
+        rows_captured = capture_frame()
         
         if rows_captured == HEIGHT:
             process_frame()
@@ -257,7 +259,7 @@ def main():
         #if vsync_pin.value:
         #    print('1', end='')
         # Небольшая задержка между кадрами
-        time.sleep(0.1)
+        # time.sleep(0.1)
 
 # Запуск
 if __name__ == "__main__":
